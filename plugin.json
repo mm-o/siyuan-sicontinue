@@ -1,0 +1,41 @@
+{
+  "name": "siyuan-sicontinue",
+  "author": "mm-o",
+  "url": "https://github.com/mm-o/siyuan-sicontinue",
+  "version": "0.0.1",
+  "minAppVersion": "2.10.14",
+  "disabledInPublish": true,
+  "backends": [
+    "all"
+  ],
+  "frontends": [
+    "all"
+  ],
+  "displayName": {
+    "default": "SiContinue",
+    "en_US": "SiContinue",
+    "zh_CN": "思续"
+  },
+  "description": {
+    "default": "上下文感知自动补全插件，智能续写你的思路",
+    "en_US": "Context-aware auto-completion plugin for intelligent writing continuation",
+    "zh_CN": "上下文感知自动补全插件，智能续写你的思路"
+  },
+  "readme": {
+    "default": "README.md",
+    "en_US": "README.md",
+    "zh_CN": "README_zh_CN.md"
+  },
+  "funding": {
+    "custom": [
+      "https://745201.xyz/pay.jpg"
+    ]
+  },
+  "keywords": [
+    "自动补全", "auto-completion", "续写", "continuation",
+    "AI", "智能写作", "smart writing",
+    "sicontinue", "思续",
+    "上下文", "context", "补全", "completion"
+  ]
+}
+
