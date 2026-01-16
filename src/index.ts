@@ -1,80 +1,57 @@
-import { Plugin, getFrontend } from 'siyuan'
-import '@/index.scss'
-import PluginInfoString from '@/../plugin.json'
-import { destroy, init } from '@/main'
- 
-const { version } = PluginInfoString
+/**
+ * SiContinue 思续 - 插件入口
+ */
 
-export default class PluginSample extends Plugin {
-  // Run as mobile
-  public isMobile: boolean
-  // Run in browser
-  public isBrowser: boolean
-  // Run as local
-  public isLocal: boolean
-  // Run in Electron
-  public isElectron: boolean
-  // Run in window
-  public isInWindow: boolean
-  public platform: SyFrontendTypes
-  public readonly version = version
+import { Plugin, Dialog } from 'siyuan'
+import { createApp } from 'vue'
+import './index.scss'
+import { init, destroy } from './main'
+import Settings from './components/Settings.vue'
 
+export default class SiContinuePlugin extends Plugin {
   async onload() {
-    const frontEnd = getFrontend()
-    this.platform = frontEnd as SyFrontendTypes
-    this.isMobile = frontEnd === 'mobile' || frontEnd === 'browser-mobile'
-    this.isBrowser = frontEnd.includes('browser')
-    this.isLocal = location.href.includes('127.0.0.1') || location.href.includes('localhost')
-    this.isInWindow = location.href.includes('window.html')
-    try {
-      require('@electron/remote').require('@electron/remote/main')
-      this.isElectron = true
-    } catch {
-      this.isElectron = false
-    }
-    init(this)
-    this.addHotkeys()
+    await init(this)
+    this.addCommands()
   }
 
-  private addHotkeys() {
-    const cmds = {
-      // 通用导航（用户可自定义）
-      prevPage: { text: '上一页', hotkey: '', callback: () => window.dispatchEvent(new CustomEvent('sireader:prevPage')) },
-      nextPage: { text: '下一页', hotkey: '', callback: () => window.dispatchEvent(new CustomEvent('sireader:nextPage')) },
-      toggleBookmark: { text: '切换书签', hotkey: '', callback: () => window.dispatchEvent(new CustomEvent('sireader:toggleBookmark')) },
-      
-      // PDF 专用（用户可自定义）
-      pdfZoomIn: { text: 'PDF放大', hotkey: '', callback: () => window.dispatchEvent(new CustomEvent('sireader:pdfZoomIn')) },
-      pdfZoomOut: { text: 'PDF缩小', hotkey: '', callback: () => window.dispatchEvent(new CustomEvent('sireader:pdfZoomOut')) },
-      pdfZoomReset: { text: 'PDF重置缩放', hotkey: '', callback: () => window.dispatchEvent(new CustomEvent('sireader:pdfZoomReset')) },
-      pdfRotate: { text: 'PDF旋转', hotkey: '', callback: () => window.dispatchEvent(new CustomEvent('sireader:pdfRotate')) },
-      pdfSearch: { text: 'PDF搜索', hotkey: '', callback: () => window.dispatchEvent(new CustomEvent('sireader:pdfSearch')) },
-      pdfPrint: { text: 'PDF打印', hotkey: '', callback: () => window.dispatchEvent(new CustomEvent('sireader:pdfPrint')) },
-      pdfFirstPage: { text: 'PDF首页', hotkey: '', callback: () => window.dispatchEvent(new CustomEvent('sireader:pdfFirstPage')) },
-      pdfLastPage: { text: 'PDF末页', hotkey: '', callback: () => window.dispatchEvent(new CustomEvent('sireader:pdfLastPage')) },
-      pdfPageUp: { text: 'PDF上一页', hotkey: '', callback: () => window.dispatchEvent(new CustomEvent('sireader:pdfPageUp')) },
-      pdfPageDown: { text: 'PDF下一页', hotkey: '', callback: () => window.dispatchEvent(new CustomEvent('sireader:pdfPageDown')) }
-    }
+  private addCommands() {
+    this.addCommand({
+      langKey: 'triggerCompletion',
+      langText: '触发补全',
+      hotkey: '',
+      callback: () => window.dispatchEvent(new CustomEvent('sicontinue:trigger'))
+    })
     
-    Object.entries(cmds).forEach(([k, { text, hotkey, callback }]) => 
-      this.addCommand({ langKey: k, langText: text, hotkey, callback })
-    )
+    this.addCommand({
+      langKey: 'showAgentSelector',
+      langText: '选择智能体',
+      hotkey: '',
+      callback: () => window.dispatchEvent(new CustomEvent('sicontinue:showAgentSelector'))
+    })
   }
 
   async onunload() {
-    // 新的 foliate 系统会在组件卸载时自动清理
     destroy()
-    console.log('[SiReader] 插件已禁用')
-    location.reload() 
   }
 
   async uninstall() {
-    await this.removeData('config.json')
-    await this.removeData('stats.json')
-    console.log('[SiReader] 插件数据已删除')
+    await this.removeData('settings.json')
   }
 
   openSetting() {
-    window._sy_plugin_sample.openSetting()
+    const dialog = new Dialog({
+      title: 'SiContinue 设置',
+      content: '<div id="sc-settings"></div>',
+      width: '720px',
+      height: '520px',
+      destroyCallback: () => {
+        app.unmount()
+      }
+    })
+    
+    const app = createApp(Settings, {
+      onClose: () => dialog.destroy()
+    })
+    app.mount(dialog.element.querySelector('#sc-settings')!)
   }
 }

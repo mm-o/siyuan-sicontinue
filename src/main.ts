@@ -1,109 +1,98 @@
-import { Plugin } from 'siyuan'
+/**
+ * 主应用初始化
+ */
+
+import type { Plugin } from 'siyuan'
 import { createApp } from 'vue'
 import App from './App.vue'
-import { initBookDataPlugin } from '@/core/bookshelf'
-import { initDictModule } from '@/core/dictionary'
-import { initMobile, isMobile } from '@/core/mobile'
-import { setPlugin } from '@/utils/copy'
+import { SettingsManager } from './core/settings'
+import { KeyboardListener } from './core/keyboard'
+import { ContextExtractor } from './core/context'
+import { CompletionPreview } from './core/preview'
+import { EVENTS } from './types'
 
 let plugin: Plugin | null = null
 let app: any = null
-let cleanupCallbacks: (() => void)[] = []
+let settingsManager: SettingsManager | null = null
+let keyboardListener: KeyboardListener | null = null
+let contextExtractor: ContextExtractor | null = null
+let completionPreview: CompletionPreview | null = null
 
 export const usePlugin = (p?: Plugin) => p ? (plugin = p) : plugin!
-export const registerCleanup = (cb: () => void) => cleanupCallbacks.push(cb)
-export const setOpenSettingHandler = (handler: () => void) => {
-  (window as any)._sy_plugin_sample = (window as any)._sy_plugin_sample || {}
-  ;(window as any)._sy_plugin_sample.openSetting = handler
-}
+export const getSettingsManager = () => settingsManager
+export const getContextExtractor = () => contextExtractor
+export const getCompletionPreview = () => completionPreview
 
-export function init(p: Plugin) {
+export async function init(p: Plugin) {
   usePlugin(p)
-  setPlugin(p)
-  initBookDataPlugin(p)
-  initDictModule(p)
-  initMobile(p)
-
-  // 移动端：侧边栏入口
-  if (isMobile()) {
-    addMobileSidebar(p)
+  
+  // 加载设置
+  settingsManager = new SettingsManager(p)
+  await settingsManager.load()
+  
+  // 初始化上下文提取器
+  contextExtractor = new ContextExtractor(p)
+  contextExtractor.setContextRange(
+    settingsManager.settings.contextRange,
+    settingsManager.settings.contextBeforeBlocks,
+    settingsManager.settings.contextAfterBlocks
+  )
+  
+  // 初始化补全预览
+  completionPreview = new CompletionPreview()
+  
+  // 初始化键盘监听
+  keyboardListener = new KeyboardListener(p)
+  keyboardListener.setDoubleClickDelay(settingsManager.settings.doubleClickDelay)
+  keyboardListener.init()
+  
+  // 设置全局访问
+  ;(window as any).__sicontinue__ = { 
+    plugin: p, 
+    contextExtractor,
+    completionPreview,
+    settings: settingsManager.settings 
   }
-
+  
+  // 监听事件
+  setupEventListeners()
+  
   // 挂载主应用
-  const div = document.createElement('div')
-  div.id = p.name
-  div.className = 'plugin-sample-vite-vue-app'
-  app = createApp(App)
-  app.mount(div)
-  document.body.appendChild(div)
+  mountApp(p)
 }
 
 export function destroy() {
-  if (!plugin) return
-  cleanupCallbacks.forEach(cb => cb())
-  cleanupCallbacks = []
+  keyboardListener?.destroy()
+  completionPreview?.destroy()
   app?.unmount()
-  const div = document.getElementById(plugin.name)
-  div?.remove()
+  document.getElementById(plugin?.name || '')?.remove()
+  delete (window as any).__sicontinue__
+  settingsManager = null
+  keyboardListener = null
+  contextExtractor = null
+  completionPreview = null
   plugin = null
+  app = null
 }
 
-// 移动端侧边栏
-async function addMobileSidebar(p: Plugin) {
-  const sidebar = document.querySelector('#sidebar .toolbar')
-  if (!sidebar) return setTimeout(() => addMobileSidebar(p), 500)
-  if (sidebar.querySelector('[data-type="sidebar-sireader-tab"]')) return
-
-  // 等待图标注册
-  for (let i = 0; i < 10 && !document.querySelector('#siyuan-reader-icon'); i++) {
-    await new Promise(resolve => setTimeout(resolve, 200))
-  }
-
-  // 克隆按钮
-  const template = sidebar.querySelector('[data-type="sidebar-file-tab"]')
-  if (!template) return
-
-  const btn = template.cloneNode(true) as SVGElement
-  btn.setAttribute('data-type', 'sidebar-sireader-tab')
-  btn.classList.remove('toolbar__icon--active')
-  btn.querySelector('use')?.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', '#siyuan-reader-icon')
-
-  // 插入到插件按钮之前
-  const pluginTab = sidebar.querySelector('[data-type="sidebar-plugin-tab"]')
-  pluginTab ? pluginTab.before(btn) : sidebar.appendChild(btn)
-
-  // 创建内容区
-  const content = document.createElement('div')
-  content.className = 'fn__flex-column fn__none'
-  content.setAttribute('data-type', 'sidebar-sireader')
-  content.style.cssText = 'height:100%;overflow:hidden'
-  sidebar.parentElement?.querySelector('.b3-list--mobile')?.appendChild(content)
-
-  // 挂载 Settings
-  const { default: Settings } = await import('./components/Settings.vue')
-  const { useSetting } = await import('./composables/useSetting')
-  const { settings } = useSetting(p)
-
-  createApp(Settings, {
-    modelValue: settings.value,
-    i18n: p.i18n,
-    onSave: async () => {
-      const cfg = await p.loadData('config.json') || {}
-      cfg.settings = JSON.parse(JSON.stringify(settings.value))
-      await p.saveData('config.json', cfg)
-      window.dispatchEvent(new CustomEvent('sireaderSettingsUpdated', { detail: cfg.settings }))
-    },
-    'onUpdate:modelValue': (v: any) => { settings.value = v }
-  }).mount(content)
-
-  // 点击切换
-  sidebar.addEventListener('click', (e: MouseEvent) => {
-    const target = (e.target as HTMLElement).closest('[data-type="sidebar-sireader-tab"]')
-    if (target) {
-      sidebar.querySelectorAll('.toolbar__icon').forEach(i => i.classList.remove('toolbar__icon--active'))
-      target.classList.add('toolbar__icon--active')
-      sidebar.parentElement?.querySelectorAll('.b3-list--mobile > div').forEach(d => d.classList.add('fn__none'))
-      content.classList.remove('fn__none')
+function setupEventListeners() {
+  window.addEventListener(EVENTS.SETTINGS_UPDATED, ((e: CustomEvent) => {
+    const s = e.detail
+    if (s?.doubleClickDelay) {
+      keyboardListener?.setDoubleClickDelay(s.doubleClickDelay)
     }
-  })
+    if (s?.contextRange || s?.contextBeforeBlocks || s?.contextAfterBlocks) {
+      contextExtractor?.setContextRange(s.contextRange, s.contextBeforeBlocks, s.contextAfterBlocks)
+    }
+  }) as EventListener)
+}
+
+function mountApp(p: Plugin) {
+  const div = document.createElement('div')
+  div.id = p.name
+  div.className = 'sicontinue-app'
+  div.style.cssText = 'position: fixed; z-index: 9999;'
+  app = createApp(App)
+  app.mount(div)
+  document.body.appendChild(div)
 }
