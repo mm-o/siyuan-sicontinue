@@ -9,6 +9,7 @@ import { SettingsManager } from './core/settings'
 import { KeyboardListener } from './core/keyboard'
 import { ContextExtractor } from './core/context'
 import { CompletionPreview } from './core/preview'
+import { getSkillEngine } from './core/skill'
 import { EVENTS } from './types'
 
 let plugin: Plugin | null = null
@@ -38,11 +39,20 @@ export async function init(p: Plugin) {
     settingsManager.settings.contextAfterBlocks
   )
   
+  // 初始化 Skill 引擎
+  const skill = getSkillEngine()
+  skill.setEnabled(settingsManager.settings.skillEnabled !== false)
+  skill.setOptions({
+    formatGuide: settingsManager.settings.formatGuideEnabled !== false,
+    noteQuery: settingsManager.settings.noteQueryEnabled,
+    queryLimit: settingsManager.settings.noteQueryLimit || 5
+  })
+  
   // 初始化补全预览
   completionPreview = new CompletionPreview()
   
   // 初始化键盘监听
-  keyboardListener = new KeyboardListener(p)
+  keyboardListener = new KeyboardListener()
   keyboardListener.setDoubleClickDelay(settingsManager.settings.doubleClickDelay)
   keyboardListener.init()
   
@@ -84,6 +94,14 @@ function setupEventListeners() {
     if (s?.contextRange || s?.contextBeforeBlocks || s?.contextAfterBlocks) {
       contextExtractor?.setContextRange(s.contextRange, s.contextBeforeBlocks, s.contextAfterBlocks)
     }
+    // 同步 Skill 设置
+    const skill = getSkillEngine()
+    skill.setEnabled(s?.skillEnabled !== false)
+    skill.setOptions({
+      formatGuide: s?.formatGuideEnabled !== false,
+      noteQuery: s?.noteQueryEnabled,
+      queryLimit: s?.noteQueryLimit || 5
+    })
   }) as EventListener)
 }
 

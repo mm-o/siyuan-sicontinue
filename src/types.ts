@@ -8,12 +8,17 @@ export interface Agent {
   id: string
   name: string
   icon: string
-  prompt: string           // 提示词模板，支持 {{text}} {{before}} {{after}} {{title}}
+  prompt: string           // 提示词模板，支持 {{text}} {{before}} {{after}} {{title}} {{notes}}
   description?: string
   tags?: string[]          // 标签，用于分类
   keywords?: string[]      // 关键词，用于搜索匹配
   temperature?: number
   enabled?: boolean
+  // Skill 相关
+  useFormatGuide?: boolean // 是否注入格式指南，默认 true
+  useNoteQuery?: boolean   // 是否查询相关笔记
+  // 交互模式
+  mode?: 'inline' | 'chat' // inline=内联补全（默认），chat=对话框
 }
 
 export interface Context {
@@ -49,6 +54,11 @@ export interface Settings {
   contextBeforeBlocks: number
   contextAfterBlocks: number
   agents: Agent[]
+  // Skill 设置
+  skillEnabled?: boolean        // Skill 全局开关
+  formatGuideEnabled?: boolean  // 格式指南开关
+  noteQueryEnabled?: boolean    // 笔记查询开关
+  noteQueryLimit?: number       // 查询数量限制
 }
 
 // ==================== 常量 ====================
@@ -114,6 +124,47 @@ export const DEFAULT_AGENTS: Agent[] = [
     tags: ['问答'],
     keywords: ['问答', '回答', 'qa'],
     enabled: true
+  },
+  // Skill 智能体
+  {
+    id: 'note-qa',
+    name: '笔记问答',
+    icon: '📚',
+    prompt: `基于笔记回答问题。
+
+{{notes}}
+
+问题：{{text}}
+
+要求：
+- 直接输出可插入思源的内容，不要代码块包裹
+- 自主选择合适格式排版（参考格式规范）
+- 块引用锚文本融入句子，如：据((ID "史料"))记载...
+- 只用提供的真实块ID`,
+    description: '基于笔记内容回答问题',
+    tags: ['问答', 'Skill'],
+    keywords: ['笔记问答', '查笔记', 'note'],
+    useNoteQuery: true,
+    useFormatGuide: true,
+    mode: 'chat',
+    enabled: true
+  },
+  {
+    id: 'format-output',
+    name: '格式化',
+    icon: '📋',
+    prompt: `整理为思源笔记格式：
+
+{{text}}
+
+要求：
+- 直接输出可插入的内容，不要代码块包裹
+- 自主选择合适格式排版（参考格式规范）`,
+    description: '整理为思源笔记格式',
+    tags: ['格式化', 'Skill'],
+    keywords: ['格式化', '整理', 'format'],
+    useFormatGuide: true,
+    enabled: true
   }
 ]
 
@@ -125,7 +176,12 @@ export const DEFAULT_SETTINGS: Settings = {
   contextRange: 'blocks',
   contextBeforeBlocks: 3,
   contextAfterBlocks: 3,
-  agents: [...DEFAULT_AGENTS]
+  agents: [...DEFAULT_AGENTS],
+  // Skill 默认设置
+  skillEnabled: true,
+  formatGuideEnabled: true,
+  noteQueryEnabled: false,
+  noteQueryLimit: 5
 }
 
 export const EVENTS = {
@@ -149,12 +205,14 @@ export function renderPrompt(template: string, context: {
   before?: string
   after?: string
   title?: string
+  notes?: string
 }): string {
   return template
     .replace(/\{\{text\}\}/g, context.text || '')
     .replace(/\{\{before\}\}/g, context.before || '')
     .replace(/\{\{after\}\}/g, context.after || '')
     .replace(/\{\{title\}\}/g, context.title || '')
+    .replace(/\{\{notes\}\}/g, context.notes || '')
 }
 
 export function deepMerge<T extends object>(target: T, ...sources: Partial<T>[]): T {

@@ -4,6 +4,7 @@
 
 import type { Agent } from '../types'
 import { renderPrompt } from '../types'
+import { getSkillEngine } from './skill'
 
 // 隐藏思源 AI 全局加载进度条
 const hideAILoading = () => {
@@ -52,25 +53,16 @@ export async function callSiyuanAI(prompt: string, timeout = 60000): Promise<str
  */
 export async function generateWithAgent(
   agent: Agent,
-  context: { text?: string; before?: string; after?: string; title?: string }
+  context: { text?: string; before?: string; after?: string; title?: string; notes?: string }
 ): Promise<string | null> {
-  const prompt = renderPrompt(agent.prompt, context)
-  return callSiyuanAI(prompt)
-}
-
-/**
- * 默认续写（兼容旧逻辑）
- */
-export async function generateCompletion(
-  _context: string,
-  beforeCursor: string,
-  _afterCursor: string
-): Promise<string | null> {
-  const prompt = `请紧接着以下文字续写，直接输出续写内容：
-
-${beforeCursor.slice(-200)}█
-
-要求：从█位置开始续写，保持语义连贯，只输出续写的文字，1-2句话。`
-
+  // 注入格式指南（如果智能体启用）
+  const skill = getSkillEngine()
+  const formatGuide = agent.useFormatGuide !== false ? skill.getFormatGuide() : ''
+  
+  let prompt = renderPrompt(agent.prompt, context)
+  if (formatGuide) {
+    prompt = `${formatGuide}\n\n${prompt}`
+  }
+  
   return callSiyuanAI(prompt)
 }

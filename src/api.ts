@@ -496,3 +496,20 @@ export async function version(): Promise<string> {
 export async function currentTime(): Promise<number> {
   return request("/api/system/currentTime", {});
 }
+
+// **************************************** Block Navigation ****************************************
+
+export async function openBlock(id: BlockId) {
+  // 使用思源内置方法打开块
+  const event = new CustomEvent('siyuan-open-block', { detail: { id } })
+  window.dispatchEvent(event)
+  // 备用：直接跳转
+  const protyle = document.querySelector('.protyle-wysiwyg[data-doc-type]')
+  if (protyle) {
+    const block = document.querySelector(`[data-node-id="${id}"]`)
+    if (block) {
+      block.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      ;(block as HTMLElement).click()
+    }
+  }
+}

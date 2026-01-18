@@ -1,142 +1,64 @@
 /**
- * 键盘监听核心组件
- * 负责监听 Alt 键的单击和双击事件
+ * 键盘监听 - Alt 单击/双击触发
  */
-
-import type { Plugin } from 'siyuan'
 import { EVENTS } from '../types'
-import { pushMsg } from '../api'
 
 export class KeyboardListener {
-  private plugin: Plugin
-  private lastAltPressTime = 0
-  private altClickCount = 0
-  private doubleClickTimer: number | null = null
-  private doubleClickDelay = 300
-  private isAltPressed = false
+  private lastPress = 0
+  private clickCount = 0
+  private timer: number | null = null
+  private delay = 300
+  private pressed = false
 
-  constructor(plugin: Plugin) {
-    this.plugin = plugin
-  }
-
-  /**
-   * 初始化键盘监听
-   */
   init() {
-    document.addEventListener('keydown', this.handleKeyDown, true)
-    document.addEventListener('keyup', this.handleKeyUp, true)
+    document.addEventListener('keydown', this.onDown, true)
+    document.addEventListener('keyup', this.onUp, true)
   }
 
-  /**
-   * 销毁键盘监听
-   */
   destroy() {
-    document.removeEventListener('keydown', this.handleKeyDown, true)
-    document.removeEventListener('keyup', this.handleKeyUp, true)
-    if (this.doubleClickTimer) {
-      clearTimeout(this.doubleClickTimer)
-      this.doubleClickTimer = null
-    }
+    document.removeEventListener('keydown', this.onDown, true)
+    document.removeEventListener('keyup', this.onUp, true)
+    this.timer && clearTimeout(this.timer)
   }
 
-  /**
-   * 处理 keydown 事件
-   */
-  private handleKeyDown = (event: KeyboardEvent) => {
-    // 只处理 Alt 键
-    if (event.key !== 'Alt') {
-      return
-    }
+  setDoubleClickDelay(delay: number) { this.delay = delay }
 
-    // 防止重复触发（按住 Alt 键会持续触发 keydown）
-    if (this.isAltPressed) {
-      return
-    }
-    this.isAltPressed = true
+  private onDown = (e: KeyboardEvent) => {
+    if (e.key !== 'Alt' || this.pressed) return
+    this.pressed = true
 
     // 检查是否在编辑器中
-    const target = event.target as HTMLElement
-    if (!this.isInEditor(target)) {
-      return
-    }
+    if (!(e.target as HTMLElement).closest('.protyle-wysiwyg')) return
 
     const now = Date.now()
-    const timeSinceLastPress = now - this.lastAltPressTime
+    if (now - this.lastPress < this.delay) {
+      this.clickCount++
+      this.timer && clearTimeout(this.timer)
+      this.timer = null
 
-    // 双击检测
-    if (timeSinceLastPress < this.doubleClickDelay) {
-      this.altClickCount++
-      
-      // 清除单击定时器
-      if (this.doubleClickTimer) {
-        clearTimeout(this.doubleClickTimer)
-        this.doubleClickTimer = null
-      }
-
-      // 触发双击
-      if (this.altClickCount === 2) {
-        this.handleDoubleClick(event)
-        this.altClickCount = 0
-        this.lastAltPressTime = 0
+      if (this.clickCount === 2) {
+        e.preventDefault()
+        e.stopPropagation()
+        window.dispatchEvent(new CustomEvent(EVENTS.SHOW_AGENT_SELECTOR))
+        this.clickCount = 0
+        this.lastPress = 0
         return
       }
     } else {
-      // 重置计数
-      this.altClickCount = 1
+      this.clickCount = 1
     }
 
-    this.lastAltPressTime = now
-
-    // 延迟触发单击，等待可能的第二次点击
-    this.doubleClickTimer = window.setTimeout(() => {
-      if (this.altClickCount === 1) {
-        this.handleSingleClick(event)
+    this.lastPress = now
+    this.timer = window.setTimeout(() => {
+      if (this.clickCount === 1) {
+        window.dispatchEvent(new CustomEvent(EVENTS.TRIGGER_COMPLETION))
       }
-      this.altClickCount = 0
-      this.doubleClickTimer = null
-    }, this.doubleClickDelay)
+      this.clickCount = 0
+      this.timer = null
+    }, this.delay)
   }
 
-  /**
-   * 处理 keyup 事件
-   */
-  private handleKeyUp = (event: KeyboardEvent) => {
-    if (event.key === 'Alt') {
-      this.isAltPressed = false
-    }
-  }
-
-  /**
-   * 检查是否在编辑器中
-   */
-  private isInEditor(target: HTMLElement): boolean {
-    // 检查是否在 protyle-wysiwyg 编辑器中
-    return !!target.closest('.protyle-wysiwyg')
-  }
-
-  /**
-   * 处理单击事件
-   */
-  private handleSingleClick(event: KeyboardEvent) {
-    event.preventDefault()
-    event.stopPropagation()
-    pushMsg('🚀 Alt 单击 - 准备补全...', 2000)
-    window.dispatchEvent(new CustomEvent(EVENTS.TRIGGER_COMPLETION))
-  }
-
-  /**
-   * 处理双击事件
-   */
-  private handleDoubleClick(event: KeyboardEvent) {
-    event.preventDefault()
-    event.stopPropagation()
-    window.dispatchEvent(new CustomEvent(EVENTS.SHOW_AGENT_SELECTOR))
-  }
-
-  /**
-   * 设置双击延迟时间
-   */
-  setDoubleClickDelay(delay: number) {
-    this.doubleClickDelay = delay
+  private onUp = (e: KeyboardEvent) => {
+    if (e.key === 'Alt') this.pressed = false
   }
 }
